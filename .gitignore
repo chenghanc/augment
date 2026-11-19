@@ -1,0 +1,15 @@
+/venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Keep the dataset directories, with their contents stored locally.
+/Archive/*
+!/Archive/bsh_aug/
+!/Archive/bsh_aug_txt/
+/Archive/bsh_aug/*
+/Archive/bsh_aug_txt/*
+!/Archive/bsh_aug/.gitkeep
+!/Archive/bsh_aug_txt/.gitkeep
+/Archive.zip
+/flip/flip.txt
