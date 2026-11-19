@@ -28,6 +28,12 @@ python flip/demo_API.py
 
 每張圖會產生水平與垂直翻轉各一組。例如 `frame.jpg` 的輸出位於 `Archive/bsh_aug_txt/frame/`，其中 `frame_3_aug.*` 為水平翻轉，`frame_4_aug.*` 為垂直翻轉。用 `python flip/demo_API.py --help` 查看自訂輸入、輸出與變換選項。
 
+若要改成水平翻轉與順時針旋轉 90 度，並另存結果：
+
+```bash
+venv/bin/python flip/demo_API.py --transforms hflip rotate90 --output-dir Archive/bsh_custom
+```
+
 ## 將 XML 轉為 YOLO TXT
 
 將原圖與同名 `.xml` 放入 `Archive/bsh_aug/`，並在該目錄建立 `classes.txt`。每行填入一個 XML 類別名稱，第一行對應 ID 0。以下指令會將原圖、YOLO 標註與類別清單寫入 `Archive/bsh_aug_txt/`，供上方的擴增指令使用。
