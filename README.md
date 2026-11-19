@@ -31,7 +31,7 @@ python flip/demo_API.py
 若要改成水平翻轉與順時針旋轉 90 度，並另存結果：
 
 ```bash
-venv/bin/python flip/demo_API.py --transforms hflip rotate90 --output-dir Archive/bsh_custom
+python flip/demo_API.py --transforms hflip rotate90 --output-dir Archive/bsh_custom
 ```
 
 ## 將 XML 轉為 YOLO TXT
