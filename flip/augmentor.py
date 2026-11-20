@@ -4,6 +4,7 @@ import argparse
 import filecmp
 import math
 from pathlib import Path
+import re
 import shutil
 from tempfile import TemporaryDirectory
 import xml.etree.ElementTree as ET
@@ -14,6 +15,23 @@ from imgaug import augmenters as iaa
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+
+
+def _original_images(images):
+    """Skip numbered variants only when their source is present in the same directory."""
+    names = {p.name for p in images}
+    originals = []
+    for image in images:
+        match = re.fullmatch(r"(.+)_([1-9][0-9]*)_aug", image.stem)
+        if match and int(match[2]) >= 3 and match[1] + image.suffix in names:
+            continue
+        originals.append(image)
+    return originals
+
+
+def _file_id(path):
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino
 
 
 def _read_txt(path, width, height, classes):
@@ -137,32 +155,36 @@ class Augmentor:
         if input_file is not None and input_dir is not None:
             raise ValueError("Choose either input_file or input_dir")
         source = Path(input_dir or input_file or "train.txt").expanduser().resolve()
+        self.manifest = None
         if input_dir is not None or source.is_dir():
             paths = sorted(p for p in source.iterdir()
                            if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES)
+            self.paths = _original_images(paths)
         else:
+            self.manifest = source
             paths = []
             for entry in source.read_text(encoding="utf-8-sig").splitlines():
                 if entry.strip():
                     path = Path(entry.strip()).expanduser()
                     relative = source.parent / path
                     paths.append((relative if relative.exists() else path).resolve())
+            self.paths = paths
         if not paths:
             raise ValueError(f"No images found in {source}")
         for path in paths:
             if not path.is_file():
                 raise FileNotFoundError(f"Image not found: {path}")
 
-        self.paths = paths
+        self._all_paths = paths
         self.labels_dir = Path(labels_dir).resolve() if labels_dir is not None else None
         self.output_dir = Path(output_dir).resolve() if output_dir is not None else None
         if label_format is None:
-            label_format = "txt" if self._label_path(paths[0], "txt").exists() else "xml"
+            label_format = "txt" if self._label_path(self.paths[0], "txt").exists() else "xml"
         self.label_format = label_format
         self.output_format = output_format or label_format
         if self.label_format not in ("txt", "xml") or self.output_format not in ("txt", "xml"):
             raise ValueError("Label formats must be 'txt' or 'xml'")
-        if len({(self._output_root(path), path.stem) for path in paths}) != len(paths):
+        if len({(self._output_root(path), path.stem.casefold()) for path in paths}) != len(paths):
             raise ValueError("Input images would produce duplicate output names")
 
         self.classes_file = Path(classes_file).resolve() if classes_file is not None else None
@@ -206,8 +228,11 @@ class Augmentor:
 
     def readImages(self):
         """Load each image and its boxes, including images with empty labels."""
+        self.images, self.bbs = self._load_images(self.paths)
+
+    def _load_images(self, paths):
         images, annotations = [], []
-        for path in self.paths:
+        for path in paths:
             image = cv2.imread(str(path))
             if image is None:
                 raise ValueError(f"Cannot decode image: {path}")
@@ -227,7 +252,7 @@ class Augmentor:
                         box.label = self.class_ids[box.label]
             images.append(image)
             annotations.append(ia.BoundingBoxesOnImage(boxes, shape=image.shape))
-        self.images, self.bbs = images, annotations
+        return images, annotations
 
     def addAugmentor(self, augmentor):
         """Add one imgaug augmenter (or a Sequential pipeline) as a variant."""
@@ -242,10 +267,16 @@ class Augmentor:
         """Convert original XML labels beside byte-identical copies of the images."""
         if (self.label_format, self.output_format) != ("xml", "txt"):
             raise ValueError("Conversion needs label_format='xml' and output_format='txt'")
-        if not self.images:
-            self.readImages()
+        # Existing variants with their own XML are valid conversion inputs too.
+        originals = set(self.paths)
+        paths = [p for p in self._all_paths
+                 if p in originals or self._label_path(p, "xml").is_file()]
+        if paths == self.paths and self.images:
+            images, annotations = self.images, self.bbs
+        else:
+            images, annotations = self._load_images(paths)
         files = []
-        for path, image, boxes in zip(self.paths, self.images, self.bbs):
+        for path, image, boxes in zip(paths, images, annotations):
             out_image = (self.output_dir or path.parent) / path.name
             target = out_image.with_suffix(".txt")
             if target.name == "classes.txt":
@@ -262,39 +293,54 @@ class Augmentor:
             _install_new(target, text)
         return len(files)
 
-    def augment(self):
-        """Write image/label pairs under <output>/<source stem>/ and return the count."""
-        if not self.images:
-            self.readImages()
-        self._copy_classes({self._output_root(path) for path in self.paths})
+    def _variants(self):
+        """Plan flat output names and detect collisions before writing any files."""
+        inputs = set(self.paths)
+        inputs.update(self._label_path(p, self.label_format) for p in self.paths)
+        inputs.update(p for p in (self.manifest, self.classes_file) if p is not None)
+        input_ids = {_file_id(p) for p in inputs}
+        variants = []
         for index, transform in enumerate(self.aug, 3):
             for path, image, boxes in zip(self.paths, self.images, self.bbs):
-                # One imgaug call shares all random choices across the image and its boxes.
-                result, transformed = transform(image=image, bounding_boxes=boxes)
-                height, width = result.shape[:2]
-                folder = self._output_root(path) / path.stem
-                basename = f"{path.stem}_{index}_aug"
-                image_name = basename + path.suffix
-                label_name = basename + "." + self.output_format
-                folder.mkdir(parents=True, exist_ok=True)
-                # Finish encoding both files before replacing a previous variant.
-                with TemporaryDirectory(dir=folder) as scratch:
-                    tmp_image = Path(scratch) / image_name
-                    tmp_label = Path(scratch) / label_name
-                    if not cv2.imwrite(str(tmp_image), result):
-                        raise OSError(f"Cannot write augmented image: {folder / image_name}")
-                    if self.output_format == "txt":
-                        tmp_label.write_text(_yolo_text(transformed, width, height), encoding="utf-8")
-                    else:
-                        from pascal_voc_writer import Writer
-                        writer = Writer(str(folder / image_name), width, height)
-                        for name, x1, y1, x2, y2 in _visible_boxes(transformed, width, height):
-                            if int(x2) > int(x1) and int(y2) > int(y1):
-                                writer.addObject(name, int(x1), int(y1), int(x2), int(y2))
-                        writer.save(str(tmp_label))
-                    tmp_image.replace(folder / image_name)
-                    tmp_label.replace(folder / label_name)
-        return len(self.paths) * len(self.aug)
+                folder = self._output_root(path)
+                stem = f"{path.stem}_{index}_aug"
+                out_image = folder / (stem + path.suffix)
+                out_label = folder / (stem + "." + self.output_format)
+                for target in (out_image, out_label):
+                    if target.exists() and _file_id(target) in input_ids:
+                        raise ValueError(f"Output would overwrite an input: {target}. Choose another output directory.")
+                variants.append((transform, image, boxes, out_image, out_label))
+        return variants
+
+    def augment(self):
+        """Write image/label pairs directly in the output directory and return the count."""
+        if not self.images:
+            self.readImages()
+        variants = self._variants()
+        self._copy_classes({self._output_root(path) for path in self.paths})
+        for transform, image, boxes, out_image, out_label in variants:
+            # One imgaug call shares all random choices across the image and its boxes.
+            result, transformed = transform(image=image, bounding_boxes=boxes)
+            height, width = result.shape[:2]
+            out_image.parent.mkdir(parents=True, exist_ok=True)
+            # Finish encoding both files before replacing a previous variant.
+            with TemporaryDirectory(dir=out_image.parent) as scratch:
+                tmp_image = Path(scratch) / out_image.name
+                tmp_label = Path(scratch) / out_label.name
+                if not cv2.imwrite(str(tmp_image), result):
+                    raise OSError(f"Cannot write augmented image: {out_image}")
+                if self.output_format == "txt":
+                    tmp_label.write_text(_yolo_text(transformed, width, height), encoding="utf-8")
+                else:
+                    from pascal_voc_writer import Writer
+                    writer = Writer(str(out_image), width, height)
+                    for name, x1, y1, x2, y2 in _visible_boxes(transformed, width, height):
+                        if int(x2) > int(x1) and int(y2) > int(y1):
+                            writer.addObject(name, int(x1), int(y1), int(x2), int(y2))
+                    writer.save(str(tmp_label))
+                tmp_image.replace(out_image)
+                tmp_label.replace(out_label)
+        return len(variants)
 
 
 if __name__ == "__main__":

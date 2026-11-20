@@ -30,11 +30,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input", type=Path, metavar="PATH",
-        help="原圖資料夾（只讀取第一層），或每行一個影像路徑的清單。TXT 預設讀取 Archive/bsh_aug_txt，XML 預設讀取 Archive/bsh_aug。",
+        help="原圖資料夾或每行一個影像路徑的清單。資料夾只讀第一層。擴增時若同層有原圖，會略過對應的 _<編號>_aug 影像（編號 ≥ 3）。清單可明確指定這些影像。TXT 預設讀取 Archive/bsh_aug_txt，XML 預設讀取 Archive/bsh_aug。",
     )
     parser.add_argument(
         "--output-dir", type=Path, metavar="DIR",
-        help="輸出資料夾。內建範例的擴增圖預設寫入 Archive/bsh_aug_txt。自訂輸入或單純轉檔時，預設寫入原圖所在資料夾。",
+        help="擴增圖與同名標註直接寫在此資料夾第一層。內建範例預設寫入 Archive/bsh_aug_txt，自訂輸入或單純轉檔時預設寫入原圖所在資料夾。",
     )
     parser.add_argument("--labels-dir", type=Path, help="指定來源標註資料夾。預設尋找與原圖搭配的同名標註。")
     parser.add_argument("--input-format", choices=("txt", "xml"), help="輸入標註格式。擴增預設為 txt，轉檔為 xml。")

@@ -32,7 +32,9 @@ pip install pascal_voc_writer
 python flip/demo_API.py
 ```
 
-每張圖會產生水平與垂直翻轉各一組。例如 `frame.jpg` 的輸出位於 `Archive/bsh_aug_txt/frame/`，其中 `frame_3_aug.*` 為水平翻轉，`frame_4_aug.*` 為垂直翻轉。用 `python flip/demo_API.py --help` 查看自訂輸入、輸出與變換選項。
+每張圖會產生水平與垂直翻轉各一組，直接寫在輸出資料夾第一層。例如 `frame.jpg` 的水平翻轉會產生 `Archive/bsh_aug_txt/frame_3_aug.jpg` 和 `Archive/bsh_aug_txt/frame_3_aug.txt`，垂直翻轉則使用 `frame_4_aug` 為檔名。
+
+當原圖與擴增圖並存時，重跑會略過對應的 `_<編號>_aug` 影像（編號 ≥ 3），並更新同名輸出。只有擴增圖的資料夾也能當作下一次的輸入。若要明確選圖，請用 `--input` 指定影像路徑清單，每行列出一張圖。其他選項可透過 `python flip/demo_API.py --help` 查看。
 
 若要改成水平翻轉與順時針旋轉 90 度，並另存結果：
 
