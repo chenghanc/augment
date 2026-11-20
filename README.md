@@ -18,6 +18,12 @@ python -m pip install \
 python -m pip check
 ```
 
+若要輸出 Pascal VOC XML 標註，請在已啟用的虛擬環境中加裝：
+
+```bash
+pip install pascal_voc_writer
+```
+
 ## 從 YOLO TXT 產生擴增資料
 
 將原圖及同名 `.txt` 放入 `Archive/bsh_aug_txt/`。每個物件一行，格式為 `class_id center_x center_y width height`。類別從 0 編號，座標與框大小以影像寬高正規化到 0 至 1。沒有物件的圖片搭配空白標註檔。
