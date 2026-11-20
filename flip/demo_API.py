@@ -23,6 +23,14 @@ TRANSFORMS = {
     "rotate90": lambda: iaa.Rot90(1, keep_size=False),
     "rotate180": lambda: iaa.Rot90(2, keep_size=False),
     "rotate270": lambda: iaa.Rot90(3, keep_size=False),
+    "brightness": lambda: iaa.Multiply((0.8, 1.2), per_channel=False),
+    "contrast": lambda: iaa.LinearContrast((0.85, 1.15), per_channel=False),
+    "gammacorrection": lambda: iaa.GammaContrast((0.85, 1.15), per_channel=False),
+    "gaussianblur": lambda: iaa.GaussianBlur(sigma=(0, 0.8)),
+    "compression": lambda: iaa.JpegCompression(compression=(5, 20)),
+    "motionblur": lambda: iaa.MotionBlur(k=3),
+    "gaussiannoise": lambda: iaa.AdditiveGaussianNoise(scale=(0, 0.01*255)),
+    "affine": lambda: iaa.Affine(rotate=(-3, 3), scale=(0.95, 1.05)),
 }
 
 
